@@ -58,12 +58,19 @@ def get_model_name(m):
 
 
 def print_models_table(models_list, title="Available Local Models"):
-    table = Table(show_header=True, header_style="bold magenta", expand=True)
+    from rich import box
+    table = Table(
+        show_header=True, 
+        header_style="bold magenta", 
+        expand=True,
+        box=box.ROUNDED,
+        border_style="cyan"
+    )
     table.add_column("No.", style="dim", width=4, justify="center")
-    table.add_column("Model Name", style="bold cyan")
-    table.add_column("Parameters", style="green", justify="right")
-    table.add_column("Size", style="yellow", justify="right")
-    table.add_column("Quantization", style="blue", justify="right")
+    table.add_column("🧠 Model Name", style="bold cyan")
+    table.add_column("⚙️ Parameters", style="green", justify="right")
+    table.add_column("💾 Size", style="yellow", justify="right")
+    table.add_column("⚡ Quantization", style="blue", justify="right")
 
     for i, m in enumerate(models_list):
         name = get_model_name(m)
@@ -85,11 +92,8 @@ def print_models_table(models_list, title="Available Local Models"):
 
         table.add_row(str(i + 1), name, param_size, size_gb, quant)
 
-    panel = Panel(
-        Align.center(table), title=f"[bold green]{title}[/bold green]", border_style="cyan"
-    )
     console.print()
-    console.print(panel)
+    console.print(Align.center(table))
     console.print()
 
 
@@ -103,21 +107,42 @@ def get_gradient_text(text, colors):
 
 
 def print_welcome_banner(model_name):
-    colors = ["#ff0055", "#ff00aa", "#cc00ff", "#5500ff", "#0055ff", "#00aaff"]
-    title = get_gradient_text("████████ OLLAMA ASSISTANT CLI ████████", colors)
-
+    colors = ["#00f2fe", "#4facfe", "#00f2fe", "#4facfe", "#00f2fe"]
+    
+    ascii_logo = """
+   ____  __    __                         ___              _     __ 
+  / __ \/ /   / /___ _____ ___  ____ _   /   |  __________(_)___/ /_
+ / / / / /   / / __ `/ __ `__ \/ __ `/  / /| | / ___/ ___/ / ___/ __/
+/ /_/ / /___/ / /_/ / / / / / / /_/ /  / ___ |(__  |__  ) /__  / /_ 
+\____/_____/_/\__,_/_/ /_/ /_/\__,_/  /_/  |_/____/____/_/____/\__/ 
+"""
+    title = get_gradient_text(ascii_logo, colors)
+    
     banner_text = Text.from_markup(f"""
-[dim]Premium Terminal UI powered by local LLMs[/dim]
+[dim italic]An elite terminal experience powered by local LLMs[/dim italic]
 
-[green]Active Model:[/green] [bold yellow]{model_name}[/bold yellow]
-[green]Workspace:[/green]    [bold yellow]{current_session}[/bold yellow]
+╭─────────────────────────────────────────────────────────╮
+│  [bold cyan]Active Model:[/bold cyan]  [bold yellow]{model_name:<15}[/bold yellow]                    │
+│  [bold cyan]Workspace:[/bold cyan]     [bold green]{current_session:<15}[/bold green]                    │
+╰─────────────────────────────────────────────────────────╯
 
-[bold]Features Active:[/bold]
-[cyan]✓[/cyan] Token Speed Meter  [cyan]✓[/cyan] Code Execution
-[cyan]✓[/cyan] Web Search         [cyan]✓[/cyan] Git Integration
-[cyan]✓[/cyan] Workspaces         [cyan]✓[/cyan] Directory Trees
+[bold]⚡ Active Subsystems:[/bold]
+[bold green]✓[/bold green] [dim]Real-time Token Speed[/dim]   [bold green]✓[/bold green] [dim]Native Code Execution[/dim]
+[bold green]✓[/bold green] [dim]DuckDuckGo Web Search[/dim]   [bold green]✓[/bold green] [dim]Git Diff Integration[/dim]
+[bold green]✓[/bold green] [dim]Local Vector RAG DB[/dim]     [bold green]✓[/bold green] [dim]Virtual Workspaces[/dim]
 """)
-    panel = Panel(Align.center(banner_text), title=title, border_style="magenta", expand=False)
+    
+    panel = Panel(
+        Align.center(banner_text), 
+        title="[bold blue]v2.0[/bold blue]", 
+        title_align="right",
+        border_style="cyan", 
+        expand=False,
+        padding=(1, 4)
+    )
+    
+    console.print()
+    console.print(Align.center(title))
     console.print(Align.center(panel))
     console.print()
 
