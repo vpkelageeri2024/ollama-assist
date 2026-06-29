@@ -231,7 +231,7 @@ def main():
     messages = load_history(state.current_session)
     
     if not system_prompt:
-        system_prompt = "You are a helpful AI assistant. If you are asked a factual question about recent events, sports, or news, and you do not know the answer with 100% certainty, DO NOT guess or hallucinate. State clearly that you do not know or that you need web search results."
+        system_prompt = "You are a highly advanced AI assistant. Your goal is to provide comprehensive, accurate, and highly intelligent answers to every request. Always try your absolute best to answer the user's prompt by synthesizing all available information and your vast knowledge base."
 
     if system_prompt and (not messages or messages[0].get("role") != "system"):
         messages.insert(0, {"role": "system", "content": system_prompt})
