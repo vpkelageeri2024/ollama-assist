@@ -486,18 +486,40 @@ def main():
     )
 
 
-def check_and_get_search_query(user_input: str, model_name: str) -> str:
-    prompt = (
-        "If the following user request requires up-to-date, real-time, or factual information from the internet "
-        "(like current events, weather, news, recent facts, or prices), output the optimal web search query for it. "
-        "Otherwise, output exactly 'NO_SEARCH'. Reply with ONLY the query or 'NO_SEARCH', no other text.\n\n"
-        f"Request: {user_input}"
+def check_and_get_search_query(messages: list, model_name: str) -> str:
+    context = ""
+    for msg in messages[-3:]:
+        if msg["role"] in ["user", "assistant"]:
+            role = "User" if msg["role"] == "user" else "Assistant"
+            context += f"{role}: {msg['content']}\n"
+            
+    system_prompt = (
+        "You are an autonomous routing agent. Your ONLY job is to determine if the User's latest request requires a web search to answer accurately (e.g. for recent events, facts, sports, news, real-time data). "
+        "If it DOES require a search, you must output ONLY the exact search query, nothing else. "
+        "If it DOES NOT require a search, you must output exactly NO_SEARCH."
     )
+    
     try:
-        response = ollama.chat(model=model_name, messages=[{"role": "user", "content": prompt}])
+        response = ollama.chat(model=model_name, messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Conversation context:\n{context}\nWhat is your output?"}
+        ])
         reply = response["message"]["content"].strip()
-        if "NO_SEARCH" not in reply.upper() and len(reply) < 100:
-            return reply.strip('"\'')
+        
+        reply_upper = reply.upper()
+        if "NO_SEARCH" in reply_upper or "NO SEARCH" in reply_upper:
+            return None
+            
+        reply = reply.strip('"\'')
+        
+        # Remove common chatty prefixes
+        if ":" in reply and len(reply.split(":")[0]) < 20:
+            reply = reply.split(":", 1)[1].strip()
+            
+        if len(reply) > 80 or len(reply) < 2:
+            return None
+            
+        return reply.strip('"\'')
     except Exception:
         pass
     return None
@@ -515,7 +537,7 @@ def handle_turn(user_input: str, messages: list, model_name: str, config: dict, 
     try:
         if not state.raw_mode:
             with console.status("[bold cyan]🧠 Analyzing intent...[/bold cyan]", spinner="dots"):
-                search_query = check_and_get_search_query(user_input, model_name)
+                search_query = check_and_get_search_query(messages, model_name)
             
             if search_query:
                 with console.status(f"[bold yellow]🔍 Searching web for '{search_query}'...[/bold yellow]", spinner="dots"):
