@@ -486,6 +486,23 @@ def main():
     )
 
 
+def check_and_get_search_query(user_input: str, model_name: str) -> str:
+    prompt = (
+        "If the following user request requires up-to-date, real-time, or factual information from the internet "
+        "(like current events, weather, news, recent facts, or prices), output the optimal web search query for it. "
+        "Otherwise, output exactly 'NO_SEARCH'. Reply with ONLY the query or 'NO_SEARCH', no other text.\n\n"
+        f"Request: {user_input}"
+    )
+    try:
+        response = ollama.chat(model=model_name, messages=[{"role": "user", "content": prompt}])
+        reply = response["message"]["content"].strip()
+        if "NO_SEARCH" not in reply.upper() and len(reply) < 100:
+            return reply.strip('"\'')
+    except Exception:
+        pass
+    return None
+
+
 def handle_turn(user_input: str, messages: list, model_name: str, config: dict, display_input: str = None):
     messages.append({"role": "user", "content": user_input})
     save_message("user", user_input, state.current_session)
@@ -496,6 +513,17 @@ def handle_turn(user_input: str, messages: list, model_name: str, config: dict, 
             console.print(f"[cyan bold]{config.get('user_name', 'You')} (Search):[/] {display_input} [dim]({timestamp})[/dim]")
     
     try:
+        if not state.raw_mode:
+            with console.status("[bold cyan]🧠 Analyzing intent...[/bold cyan]", spinner="dots"):
+                search_query = check_and_get_search_query(user_input, model_name)
+            
+            if search_query:
+                with console.status(f"[bold yellow]🔍 Searching web for '{search_query}'...[/bold yellow]", spinner="dots"):
+                    search_results = search_web(search_query)
+                    sys_msg = f"Web search results for '{search_query}':\n\n{search_results}\n\nUse this information to answer the user's prompt accurately."
+                    messages.append({"role": "system", "content": sys_msg})
+                    save_message("system", sys_msg, state.current_session)
+
         response_stream = ollama.chat(model=model_name, messages=messages, stream=True)
         full_response = ""
         start_time = time.time()
