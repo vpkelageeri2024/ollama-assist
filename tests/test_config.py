@@ -10,8 +10,11 @@ def temp_config_dir(tmp_path, monkeypatch):
     monkeypatch.setattr(ollama_assistant.config, "CONFIG_FILE", config_dir / "config.yaml")
     return config_dir
 
+from unittest.mock import patch
+
 def test_load_config_default(temp_config_dir):
-    config = load_config()
+    with patch("ollama_assistant.config.Prompt.ask", side_effect=["You", "ansicyan"]):
+        config = load_config()
     assert config == DEFAULT_CONFIG
 
 def test_load_config_existing(temp_config_dir):

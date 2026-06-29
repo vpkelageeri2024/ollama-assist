@@ -152,8 +152,7 @@ def handle_slash_command(command: str, args: str, model_name: str, messages: lis
             print_error("No response available to run.")
             return True, model_name
 
-        blocks = re.findall(r"```(python|bash|sh)
-(.*?)```", state.last_assistant_response, re.DOTALL)
+        blocks = re.findall(r"```(python|bash|sh)\n(.*?)```", state.last_assistant_response, re.DOTALL)
         if not blocks:
             print_error("No executable code blocks (python/bash) found in the last response.")
             return True, model_name
@@ -191,10 +190,7 @@ def handle_slash_command(command: str, args: str, model_name: str, messages: lis
             console.print(Panel(out, title="[bold green]Output[/bold green]", border_style="green"))
 
             if Confirm.ask("Send output back to the assistant?"):
-                handle_turn_cb(f"I ran the code. Here is the output:
-```
-{out}
-```", messages, model_name, config)
+                handle_turn_cb(f"I ran the code. Here is the output:\n```\n{out}\n```", messages, model_name, config)
         except Exception as e:
             print_error(str(e))
         return True, model_name
@@ -452,20 +448,13 @@ def handle_slash_command(command: str, args: str, model_name: str, messages: lis
                 
                 context = ""
                 for doc in results:
-                    context += f"
---- Source: {doc.metadata.get('source', 'Unknown')} ---
-{doc.page_content}
-"
+                    context += f"\n--- Source: {doc.metadata.get('source', 'Unknown')} ---\n{doc.page_content}\n"
 
                 console.print(
                     Panel(context, title="[cyan]Retrieved Context[/cyan]", border_style="cyan")
                 )
 
-                prompt = f"Answer the user's question based ONLY on the following retrieved local documents:
-
-{context}
-
-Question: {query}"
+                prompt = f"Answer the user's question based ONLY on the following retrieved local documents:\n\n{context}\n\nQuestion: {query}"
                 handle_turn_cb(prompt, messages, model_name, config, display_input=f"Ask RAG: {query}")
             except Exception as e:
                 print_error(str(e))
@@ -710,6 +699,79 @@ Question: {query}"
             handle_turn_cb(prompt, messages, model_name, config, display_input="Analyze system logs")
         except Exception as e:
             print_error(f"Could not read logs: {e}")
+        return True, model_name
+
+
+    elif command == "/speak":
+        state.voice_enabled = not state.voice_enabled
+        status = "ON" if state.voice_enabled else "OFF"
+        console.print(Panel(f"[bold green]🔊 Text-to-Speech is now {status}[/bold green]", border_style="green", expand=False))
+        return True, model_name
+
+    elif command == "/persona":
+        persona_name = args.strip()
+        personas = config.get("personas", {})
+        if not persona_name:
+            console.print("[cyan]Available personas:[/cyan] " + ", ".join(personas.keys()))
+            return True, model_name
+            
+        if persona_name in personas:
+            sys_prompt = personas[persona_name]
+            messages.append({"role": "system", "content": sys_prompt})
+            console.print(Panel(f"[bold green]🎭 Switched persona to:[/bold green] {persona_name}", border_style="green", expand=False))
+        else:
+            print_error(f"Persona '{persona_name}' not found in config.")
+        return True, model_name
+
+    elif command == "/browse":
+        url = args.strip()
+        if not url.startswith("http"):
+            url = "https://" + url
+            
+        with console.status(f"[bold yellow]🌐 Scraping {url}...[/bold yellow]"):
+            try:
+                import requests
+                from bs4 import BeautifulSoup
+                
+                response = requests.get(url, timeout=10)
+                soup = BeautifulSoup(response.text, 'html.parser')
+                text = ' '.join([p.text for p in soup.find_all('p')])
+                
+                preview = text[:500] + "..." if len(text) > 500 else text
+                console.print(Panel(preview, title=f"[cyan]Scraped content from {url}[/cyan]"))
+                
+                prompt = f"I have scraped the following content from {url}:\n\n{text}\n\nPlease summarize or answer questions about this."
+                handle_turn_cb(prompt, messages, model_name, config, display_input=f"Browse {url}")
+            except Exception as e:
+                print_error(f"Failed to scrape webpage: {e}")
+        return True, model_name
+
+    elif command == "/vision":
+        parts = args.split(" ", 1)
+        if len(parts) < 2:
+            print_error("Usage: /vision <image_path> <prompt>")
+            return True, model_name
+            
+        image_path, prompt = parts[0], parts[1]
+        if not Path(image_path).exists():
+            print_error("Image file not found.")
+            return True, model_name
+            
+        with console.status("[bold yellow]👁️ Analyzing image...[/bold yellow]"):
+            try:
+                msg = {
+                    'role': 'user',
+                    'content': prompt,
+                    'images': [image_path]
+                }
+                temp_messages = messages + [msg]
+                handle_turn_cb(prompt, temp_messages, model_name, config, display_input=f"Vision: {prompt}")
+                # We update the original messages with the assistant's reply (which handle_turn_cb does to temp_messages)
+                if temp_messages[-1]['role'] == 'assistant':
+                    messages.append(msg)
+                    messages.append(temp_messages[-1])
+            except Exception as e:
+                print_error(f"Vision error: {e}")
         return True, model_name
 
     return False, model_name

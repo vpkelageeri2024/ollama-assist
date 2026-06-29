@@ -7,5 +7,7 @@ class AppState:
     last_assistant_response: str = ""
     current_session: str = "default"
     run_globals: Dict[str, Any] = field(default_factory=dict)
+    raw_mode: bool = False
+    voice_enabled: bool = False
 
 state = AppState()

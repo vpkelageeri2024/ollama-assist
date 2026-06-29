@@ -170,6 +170,8 @@ def main():
         "-w", "--workspace", type=str, default="default", help="Workspace session name"
     )
     parser.add_argument("prompt", type=str, nargs="*", help="Initial prompt")
+    parser.add_argument("--raw", action="store_true", help="Output raw text/JSON without UI")
+    parser.add_argument("--voice", action="store_true", help="Enable text-to-speech")
 
     args = parser.parse_args()
 
@@ -177,6 +179,8 @@ def main():
     system_prompt = args.system
     file_context = args.file
     state.current_session = args.workspace
+    state.raw_mode = args.raw
+    state.voice_enabled = args.voice
     initial_prompt = " ".join(args.prompt) if args.prompt else None
 
     if not model_name:
@@ -283,8 +287,9 @@ def main():
         bottom_toolbar=bottom_toolbar,
     )
 
-    print_welcome_banner(model_name)
-    check_for_updates()
+    if not state.raw_mode:
+        print_welcome_banner(model_name)
+        check_for_updates()
 
     if file_context:
         path = Path(file_context)
@@ -341,11 +346,15 @@ def main():
                 print_error(f"Error reading file {file_context}: {e}")
 
     if initial_prompt:
-        timestamp = datetime.now().strftime("%H:%M")
-        console.print(
-            f"[{theme_color} bold]{user_name}:[/] {initial_prompt} [dim]({timestamp})[/dim]"
-        )
+        if not state.raw_mode:
+            timestamp = datetime.now().strftime("%H:%M")
+            console.print(f"[{theme_color} bold]{user_name}:[/] {initial_prompt} [dim]({timestamp})[/dim]")
         handle_turn(initial_prompt, messages, state.current_model_name, config)
+        if state.raw_mode:
+            sys.exit(0)
+
+    if state.raw_mode:
+        sys.exit(0)
 
     while True:
         try:
@@ -451,63 +460,63 @@ def handle_turn(user_input: str, messages: list, model_name: str, config: dict, 
     messages.append({"role": "user", "content": user_input})
     save_message("user", user_input, state.current_session)
 
-    timestamp = datetime.now().strftime("%H:%M")
-    if display_input:
-        console.print(
-            f"[cyan bold]{config.get('user_name', 'You')} (Search):[/] {display_input} [dim]({timestamp})[/dim]"
-        )
-
+    if not state.raw_mode:
+        timestamp = datetime.now().strftime("%H:%M")
+        if display_input:
+            console.print(f"[cyan bold]{config.get('user_name', 'You')} (Search):[/] {display_input} [dim]({timestamp})[/dim]")
+    
     try:
         response_stream = ollama.chat(model=model_name, messages=messages, stream=True)
         full_response = ""
         start_time = time.time()
         tokens = 0
 
-        with Live(console=console, refresh_per_second=15) as live:
+        if state.raw_mode:
             for chunk in response_stream:
                 content = chunk["message"]["content"]
                 full_response += content
-                tokens += 1
+                sys.stdout.write(content)
+                sys.stdout.flush()
+            sys.stdout.write("\n")
+        else:
+            with Live(console=console, refresh_per_second=15) as live:
+                for chunk in response_stream:
+                    content = chunk["message"]["content"]
+                    full_response += content
+                    tokens += 1
+                    elapsed = time.time() - start_time
+                    speed = tokens / elapsed if elapsed > 0 else 0
+                    
+                    display_md = Markdown(full_response + "█", code_theme=config.get("code_theme", "monokai"))
+                    panel = Panel(display_md, title=f"[bold magenta]🤖 Assistant[/bold magenta] [dim]({timestamp})[/dim] | [yellow]⚡ {speed:.1f} t/s[/yellow]", title_align="left", border_style="magenta")
+                    live.update(panel)
 
-                elapsed = time.time() - start_time
-                speed = tokens / elapsed if elapsed > 0 else 0
-
-                display_md = Markdown(
-                    full_response + "█", code_theme=config.get("code_theme", "monokai")
-                )
-                panel = Panel(
-                    display_md,
-                    title=f"[bold magenta]🤖 Assistant[/bold magenta] [dim]({timestamp})[/dim] | [yellow]⚡ {speed:.1f} t/s[/yellow]",
-                    title_align="left",
-                    border_style="magenta",
-                )
-                live.update(panel)
-
-            final_md = Markdown(full_response, code_theme=config.get("code_theme", "monokai"))
-            final_panel = Panel(
-                final_md,
-                title=f"[bold magenta]🤖 Assistant[/bold magenta] [dim]({timestamp})[/dim] | [yellow]⚡ {(tokens/(time.time()-start_time)):.1f} t/s[/yellow]",
-                title_align="left",
-                border_style="magenta",
-            )
-            live.update(final_panel)
+                final_md = Markdown(full_response, code_theme=config.get("code_theme", "monokai"))
+                final_panel = Panel(final_md, title=f"[bold magenta]🤖 Assistant[/bold magenta] [dim]({timestamp})[/dim] | [yellow]⚡ {(tokens/(time.time()-start_time)):.1f} t/s[/yellow]", title_align="left", border_style="magenta")
+                live.update(final_panel)
 
         messages.append({"role": "assistant", "content": full_response})
         save_message("assistant", full_response, state.current_session)
         state.last_assistant_response = full_response
-
-        # Send desktop notification if generation took a while
-        if (time.time() - start_time) > 5.0:
+        
+        if state.voice_enabled:
             try:
-                subprocess.run(
-                    ["notify-send", "Ollama Assistant", "Generation Complete!"], capture_output=True
-                )
+                import pyttsx3
+                engine = pyttsx3.init()
+                engine.say(full_response)
+                engine.runAndWait()
+            except Exception as e:
+                if not state.raw_mode:
+                    print_error(f"TTS error: {e}")
+
+        if not state.raw_mode and (time.time() - start_time) > 5.0:
+            try:
+                subprocess.run(["notify-send", "Ollama Assistant", "Generation Complete!"], capture_output=True)
             except Exception:
                 pass
 
     except Exception as e:
-        print_error(f"Communicating with Ollama: {e}")
-
-
-if __name__ == "__main__":
-    main()
+        if not state.raw_mode:
+            print_error(f"Communicating with Ollama: {e}")
+        else:
+            print(f"Error: {e}")
