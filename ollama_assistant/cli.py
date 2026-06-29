@@ -229,6 +229,9 @@ def main():
 
     state.current_model_name = model_name
     messages = load_history(state.current_session)
+    
+    if not system_prompt:
+        system_prompt = "You are a helpful AI assistant. If you are asked a factual question about recent events, sports, or news, and you do not know the answer with 100% certainty, DO NOT guess or hallucinate. State clearly that you do not know or that you need web search results."
 
     if system_prompt and (not messages or messages[0].get("role") != "system"):
         messages.insert(0, {"role": "system", "content": system_prompt})
@@ -499,7 +502,12 @@ def check_and_get_search_query(messages: list, model_name: str) -> str:
         "You are an autonomous routing agent. Your ONLY job is to determine if the User's LATEST message requires a web search to answer accurately (e.g., for current events, news, sports, or real-time facts). "
         "Use the Conversation History ONLY to understand context if the Latest Message is ambiguous (like 'who won it?'). "
         "If the Latest Message is a simple greeting (like 'hi', 'hello'), conversational, or does NOT need a search, you MUST output exactly NO_SEARCH. "
-        "If it DOES require a search, output ONLY the search query."
+        "If it DOES require a search, output ONLY the search query.\n\n"
+        "EXAMPLES:\n"
+        "Latest Message: hi\nOutput: NO_SEARCH\n\n"
+        "Latest Message: who won the IPL 2026\nOutput: IPL 2026 winner\n\n"
+        "Latest Message: write a python script for a snake game\nOutput: NO_SEARCH\n\n"
+        "Latest Message: what is the weather in Tokyo today\nOutput: Tokyo weather today"
     )
     
     prompt_content = f"Conversation History:\n{history}\n\nLatest Message: {latest_msg}\n\nOutput ONLY NO_SEARCH or the search query:"
