@@ -12,7 +12,7 @@ def init_db():
     # Check if session column exists (for migrating old DB)
     c.execute("PRAGMA table_info(history)")
     columns = [col[1] for col in c.fetchall()]
-    if "session" not in columns:
+    if columns and "session" not in columns:
         c.execute("DROP TABLE history")  # simple migration by dropping
 
     c.execute("""CREATE TABLE IF NOT EXISTS history 
