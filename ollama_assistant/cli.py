@@ -39,6 +39,7 @@ console = Console()
 
 from .state import state
 from .commands import handle_slash_command
+from .updater import check_for_updates
 from .utils import get_model_name, print_models_table
 
 
@@ -283,6 +284,7 @@ def main():
     )
 
     print_welcome_banner(model_name)
+    check_for_updates()
 
     if file_context:
         path = Path(file_context)
