@@ -8,7 +8,7 @@ CONFIG_DIR = Path.home() / ".config" / "ollama-assist"
 CONFIG_FILE = CONFIG_DIR / "config.yaml"
 
 DEFAULT_CONFIG = {
-    "theme": "ansicyan",
+    "theme": "cyan",
     "user_name": "You",
     "code_theme": "monokai",
     "personas": {

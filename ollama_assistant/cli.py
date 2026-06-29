@@ -161,7 +161,9 @@ def build_tree(directory, tree):
 def main():
     config = load_config()
     user_name = config.get("user_name", "You")
-    theme_color = config.get("theme", "ansicyan")
+    theme_color = config.get("theme", "cyan")
+    if theme_color.startswith("ansi"):
+        theme_color = theme_color[4:]
 
     parser = argparse.ArgumentParser(description="Ollama Assistant CLI")
     parser.add_argument("-m", "--model", type=str, help="Ollama model to use")

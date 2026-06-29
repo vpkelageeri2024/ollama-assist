@@ -13,7 +13,7 @@ def temp_config_dir(tmp_path, monkeypatch):
 from unittest.mock import patch
 
 def test_load_config_default(temp_config_dir):
-    with patch("ollama_assistant.config.Prompt.ask", side_effect=["You", "ansicyan"]):
+    with patch("ollama_assistant.config.Prompt.ask", side_effect=["You", "cyan"]):
         config = load_config()
     assert config == DEFAULT_CONFIG
 
