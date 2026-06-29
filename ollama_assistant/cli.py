@@ -22,6 +22,11 @@ from rich.progress import Progress
 from rich.tree import Tree
 from rich import box
 from prompt_toolkit import PromptSession
+from prompt_toolkit.application import Application
+from prompt_toolkit.layout.containers import Window, HSplit
+from prompt_toolkit.layout.controls import FormattedTextControl
+from prompt_toolkit.layout.layout import Layout
+from prompt_toolkit.widgets import Frame, TextArea
 from prompt_toolkit.styles import Style
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.completion import WordCompleter
@@ -281,14 +286,32 @@ def main():
     ]
     completer = WordCompleter(slash_commands, ignore_case=True)
 
-    session = PromptSession(
-        style=style,
-        key_bindings=bindings,
-        multiline=True,
-        completer=completer,
-        lexer=PygmentsLexer(PythonLexer),
-        bottom_toolbar=bottom_toolbar,
-    )
+    def get_framed_input(user_name):
+        text_area = TextArea(
+            multiline=True,
+            lexer=PygmentsLexer(PythonLexer),
+            completer=completer
+        )
+        
+        frame = Frame(text_area, title=f" {user_name} ", style="class:prompt")
+        
+        @bindings.add("enter")
+        def _(event):
+            event.app.exit(result=text_area.text)
+            
+        instructions = Window(height=1, content=FormattedTextControl(
+            " [Enter: Submit | Esc+Enter: Newline]"
+        ), style="class:bottom-toolbar")
+        
+        layout = Layout(HSplit([frame, instructions]))
+        app = Application(
+            layout=layout,
+            key_bindings=bindings,
+            full_screen=False,
+            erase_when_done=True,
+            style=style
+        )
+        return app.run()
 
     if not state.raw_mode:
         print_welcome_banner(model_name)
@@ -361,14 +384,12 @@ def main():
 
     while True:
         try:
-            user_input = session.prompt([("class:prompt", f"{user_name}: ")])
+            user_input = get_framed_input(user_name)
             if user_input.strip().lower() in ["exit", "quit"]:
                 break
             if not user_input.strip():
                 continue
 
-            sys.stdout.write("\033[F\033[K")
-            sys.stdout.flush()
             timestamp = datetime.now().strftime("%H:%M")
             user_panel = Panel(user_input, title=f"[{theme_color} bold]{user_name}[/] [dim]({timestamp})[/dim]", box=box.ROUNDED, border_style=theme_color, title_align="right", expand=False)
             console.print(Align.right(user_panel))
