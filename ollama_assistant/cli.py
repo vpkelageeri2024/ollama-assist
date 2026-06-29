@@ -510,10 +510,8 @@ def handle_turn(user_input: str, messages: list, model_name: str, config: dict, 
             sys.stdout.write("\n")
         else:
             try:
-                # Wait for first chunk with status spinner
-                with console.status("[blink yellow]Thinking...[/blink yellow]", spinner="dots"):
-                    response_iterator = iter(response_stream)
-                    first_chunk = next(response_iterator)
+                response_iterator = iter(response_stream)
+                first_chunk = next(response_iterator)
                 
                 with Live(console=console, refresh_per_second=15) as live:
                     speeds = []
