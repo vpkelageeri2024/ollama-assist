@@ -20,6 +20,7 @@ from rich.rule import Rule
 from rich.text import Text
 from rich.progress import Progress
 from rich.tree import Tree
+from rich import box
 from prompt_toolkit import PromptSession
 from prompt_toolkit.styles import Style
 from prompt_toolkit.key_binding import KeyBindings
@@ -363,6 +364,11 @@ def main():
                 break
             if not user_input.strip():
                 continue
+
+            sys.stdout.write("\033[F\033[K")
+            sys.stdout.flush()
+            timestamp = datetime.now().strftime("%H:%M")
+            console.print(Panel(user_input, title=f"[{theme_color} bold]{user_name}[/] [dim]({timestamp})[/dim]", box=box.ROUNDED, border_style=theme_color, title_align="right"))
 
             console.print(Rule(style="dim cyan"))
 
