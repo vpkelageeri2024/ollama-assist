@@ -16,8 +16,10 @@ from .history import clear_history, load_history, save_message, get_sessions
 # For now, let's just create a local console and print_error in commands.py to avoid circular imports.
 from rich.console import Console
 console = Console()
+from .logger import logger
+
 def print_error(message):
-    console.print(Panel(f"[bold red]❌ ERROR:[/bold red] {message}", border_style="red", expand=False))
+    logger.error(message)
 
 # We need to pass handle_turn down if it's used inside commands.py (e.g., for /commit, /paste).
 # To avoid circular imports, we can pass it as a callback or import it locally inside the function.
@@ -149,6 +151,53 @@ def handle_slash_command(command: str, args: str, model_name: str, messages: lis
         if not state.last_assistant_response:
             print_error("No response available to run.")
             return True, model_name
+
+        blocks = re.findall(r"```(python|bash|sh)
+(.*?)```", state.last_assistant_response, re.DOTALL)
+        if not blocks:
+            print_error("No executable code blocks (python/bash) found in the last response.")
+            return True, model_name
+
+        lang, code = blocks[-1]
+        console.print(Panel(code, title=f"[{lang}] Code to execute", border_style="yellow"))
+        console.print("[bold red]WARNING: Executing generated code can be dangerous.[/bold red]")
+        
+        use_sandbox = Confirm.ask("[bold cyan]🛡️ Run in isolated Docker Sandbox (requires Docker)? [y/n][/bold cyan]", default=True)
+        if not use_sandbox:
+            if not Confirm.ask("[bold red]⚠️ Are you absolutely sure you want to execute this UNRESTRICTED on your machine?[/bold red]"):
+                return True, model_name
+
+        try:
+            if use_sandbox:
+                import docker
+                client = docker.from_env()
+                container_image = "python:3.11-slim" if lang == "python" else "ubuntu:latest"
+                cmd_str = f"python -c \"{code}\"" if lang == "python" else f"bash -c \"{code}\""
+                
+                with console.status("[bold yellow]🐳 Running in Docker sandbox...[/bold yellow]"):
+                    container = client.containers.run(container_image, cmd_str, remove=True, capture_output=True, text=True)
+                    out = container
+            else:
+                if lang == "python":
+                    import io, contextlib
+                    out_buf = io.StringIO()
+                    with contextlib.redirect_stdout(out_buf), contextlib.redirect_stderr(out_buf):
+                        exec(code, state.run_globals)
+                    out = out_buf.getvalue()
+                else:
+                    result = subprocess.run(["bash", "-c", code], capture_output=True, text=True)
+                    out = result.stdout + result.stderr
+
+            console.print(Panel(out, title="[bold green]Output[/bold green]", border_style="green"))
+
+            if Confirm.ask("Send output back to the assistant?"):
+                handle_turn_cb(f"I ran the code. Here is the output:
+```
+{out}
+```", messages, model_name, config)
+        except Exception as e:
+            print_error(str(e))
+        return True, model_name
 
         blocks = re.findall(r"```(python|bash|sh)\n(.*?)```", state.last_assistant_response, re.DOTALL)
         if not blocks:
@@ -310,6 +359,40 @@ def handle_slash_command(command: str, args: str, model_name: str, messages: lis
 
         with console.status("[bold yellow]📚 Ingesting documents into Vector DB...[/bold yellow]"):
             try:
+                from langchain_community.document_loaders import DirectoryLoader, TextLoader
+                from langchain.text_splitter import RecursiveCharacterTextSplitter
+                from langchain_community.embeddings import OllamaEmbeddings
+                from langchain_community.vectorstores import Chroma
+                import warnings
+
+                warnings.filterwarnings("ignore")
+                db_path = str(Path.home() / ".config" / "ollama-assist" / "chroma_db")
+                
+                # Load documents
+                loader = DirectoryLoader(directory, glob="**/*.*", loader_cls=TextLoader, silent_errors=True)
+                docs = loader.load()
+                
+                # Split intelligently
+                text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+                splits = text_splitter.split_documents(docs)
+                
+                # Embed and store
+                embeddings = OllamaEmbeddings(model="nomic-embed-text") # Highly recommended local embedding model
+                vectorstore = Chroma.from_documents(documents=splits, embedding=embeddings, persist_directory=db_path)
+                
+                console.print(
+                    Panel(
+                        f"[bold green]✅ Ingested {len(docs)} files ({len(splits)} chunks) into the advanced Vector Database![/bold green]",
+                        border_style="green",
+                        expand=False,
+                    )
+                )
+            except Exception as e:
+                print_error(str(e))
+        return True, model_name
+
+        with console.status("[bold yellow]📚 Ingesting documents into Vector DB...[/bold yellow]"):
+            try:
                 import chromadb
                 import warnings
 
@@ -353,6 +436,40 @@ def handle_slash_command(command: str, args: str, model_name: str, messages: lis
         if not query:
             print_error("Please provide a question.")
             return True, model_name
+
+        with console.status("[bold yellow]🔍 Searching local documents...[/bold yellow]"):
+            try:
+                from langchain_community.embeddings import OllamaEmbeddings
+                from langchain_community.vectorstores import Chroma
+                import warnings
+
+                warnings.filterwarnings("ignore")
+                db_path = str(Path.home() / ".config" / "ollama-assist" / "chroma_db")
+                embeddings = OllamaEmbeddings(model="nomic-embed-text")
+                vectorstore = Chroma(persist_directory=db_path, embedding_function=embeddings)
+                
+                results = vectorstore.similarity_search(query, k=3)
+                
+                context = ""
+                for doc in results:
+                    context += f"
+--- Source: {doc.metadata.get('source', 'Unknown')} ---
+{doc.page_content}
+"
+
+                console.print(
+                    Panel(context, title="[cyan]Retrieved Context[/cyan]", border_style="cyan")
+                )
+
+                prompt = f"Answer the user's question based ONLY on the following retrieved local documents:
+
+{context}
+
+Question: {query}"
+                handle_turn_cb(prompt, messages, model_name, config, display_input=f"Ask RAG: {query}")
+            except Exception as e:
+                print_error(str(e))
+        return True, model_name
 
         with console.status("[bold yellow]🔍 Searching local documents...[/bold yellow]"):
             try:

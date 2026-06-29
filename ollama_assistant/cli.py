@@ -42,10 +42,10 @@ from .commands import handle_slash_command
 from .utils import get_model_name, print_models_table
 
 
+from .logger import logger
+
 def print_error(message):
-    console.print(
-        Panel(f"[bold red]❌ ERROR:[/bold red] {message}", border_style="red", expand=False)
-    )
+    logger.error(message)
 
 
 def get_gradient_text(text, colors):
