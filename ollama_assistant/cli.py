@@ -62,7 +62,7 @@ def get_gradient_text(text, colors):
 def print_welcome_banner(model_name):
     colors = ["#00f2fe", "#4facfe", "#00f2fe", "#4facfe", "#00f2fe"]
     
-    ascii_logo = """
+    ascii_logo = r"""
    ____  __    __                         ___              _     __ 
   / __ \/ /   / /___ _____ ___  ____ _   /   |  __________(_)___/ /_
  / / / / /   / / __ `/ __ `__ \/ __ `/  / /| | / ___/ ___/ / ___/ __/
@@ -370,7 +370,8 @@ def main():
             sys.stdout.write("\033[F\033[K")
             sys.stdout.flush()
             timestamp = datetime.now().strftime("%H:%M")
-            console.print(Panel(user_input, title=f"[{theme_color} bold]{user_name}[/] [dim]({timestamp})[/dim]", box=box.ROUNDED, border_style=theme_color, title_align="right"))
+            user_panel = Panel(user_input, title=f"[{theme_color} bold]{user_name}[/] [dim]({timestamp})[/dim]", box=box.ROUNDED, border_style=theme_color, title_align="right", expand=False)
+            console.print(Align.right(user_panel))
 
             console.print(Rule(style="dim cyan"))
 
@@ -490,16 +491,27 @@ def handle_turn(user_input: str, messages: list, model_name: str, config: dict, 
             with Live(console=console, refresh_per_second=15) as live:
                 loading_panel = Panel(Text("Thinking...", style="blink yellow"), title=f"[bold magenta]🤖 Assistant[/bold magenta] [dim]({timestamp})[/dim]", title_align="left", border_style="magenta")
                 live.update(loading_panel)
-                for chunk in response_stream:
-                    content = chunk["message"]["content"]
-                    full_response += content
-                    tokens += 1
-                    elapsed = time.time() - start_time
-                    speed = tokens / elapsed if elapsed > 0 else 0
-                    
-                    display_md = Markdown(full_response + "█", code_theme=config.get("code_theme", "monokai"))
-                    panel = Panel(display_md, title=f"[bold magenta]🤖 Assistant[/bold magenta] [dim]({timestamp})[/dim] | [yellow]⚡ {speed:.1f} t/s[/yellow]", title_align="left", border_style="magenta")
-                    live.update(panel)
+                try:
+                    speeds = []
+                    spark_chars = " ▂▃▄▅▆▇█"
+                    for chunk in response_stream:
+                        content = chunk["message"]["content"]
+                        full_response += content
+                        tokens += 1
+                        elapsed = time.time() - start_time
+                        speed = tokens / elapsed if elapsed > 0 else 0
+                        
+                        if tokens % 3 == 0:
+                            speeds.append(speed)
+                            if len(speeds) > 10: speeds.pop(0)
+                            
+                        sparkline = "".join([spark_chars[min(int((s/max(speeds))*7), 7)] for s in speeds]) if speeds else ""
+                        
+                        display_md = Markdown(full_response + "█", code_theme=config.get("code_theme", "monokai"))
+                        panel = Panel(display_md, title=f"[bold magenta]🤖 Assistant[/bold magenta] [dim]({timestamp})[/dim] | [yellow]⚡ {speed:.1f} t/s {sparkline}[/yellow]", title_align="left", border_style="magenta")
+                        live.update(panel)
+                except KeyboardInterrupt:
+                    full_response += "\n\n*[dim]Generation interrupted by user...[/dim]*"
 
                 final_md = Markdown(full_response, code_theme=config.get("code_theme", "monokai"))
                 final_panel = Panel(final_md, title=f"[bold magenta]🤖 Assistant[/bold magenta] [dim]({timestamp})[/dim] | [yellow]⚡ {(tokens/(time.time()-start_time)):.1f} t/s[/yellow]", title_align="left", border_style="magenta")

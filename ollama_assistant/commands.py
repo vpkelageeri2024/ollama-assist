@@ -8,7 +8,7 @@ import psutil
 import pyperclip
 import ollama
 from rich.panel import Panel
-from rich.prompt import Confirm
+from rich.prompt import Confirm, Prompt, IntPrompt
 from .state import state
 from .history import clear_history, load_history, save_message, get_sessions
 
@@ -58,20 +58,30 @@ def handle_slash_command(command: str, args: str, model_name: str, messages: lis
         return True, model_name
 
     elif command == "/model":
-        if args:
-            new_model = args.strip()
-            state.current_model_name = new_model
-            console.print(
-                Panel(
-                    f"[bold green]🔄 Switched active model to:[/bold green] [bold yellow]{new_model}[/bold yellow]",
-                    border_style="green",
-                    expand=False,
-                )
+        if not args:
+            try:
+                models_list = ollama.list()["models"]
+                if not models_list:
+                    print_error("No models found. Pull one using 'ollama pull <model>'")
+                    return True, model_name
+                    
+                print_models_table(models_list, title="Select a Model")
+                choice = IntPrompt.ask("[cyan]Enter the number of the model to use[/cyan]", choices=[str(i+1) for i in range(len(models_list))])
+                args = get_model_name(models_list[choice - 1])
+            except Exception as e:
+                print_error(f"Error fetching models: {e}")
+                return True, model_name
+                
+        new_model = args.strip()
+        state.current_model_name = new_model
+        console.print(
+            Panel(
+                f"[bold green]🔄 Switched active model to:[/bold green] [bold yellow]{new_model}[/bold yellow]",
+                border_style="green",
+                expand=False,
             )
-            return True, new_model
-        else:
-            print_error("Please specify a model name (e.g. /model phi3)")
-            return True, model_name
+        )
+        return True, new_model
 
     elif command == "/save":
         if args:
