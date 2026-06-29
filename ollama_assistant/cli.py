@@ -487,22 +487,27 @@ def main():
 
 
 def check_and_get_search_query(messages: list, model_name: str) -> str:
-    context = ""
-    for msg in messages[-3:]:
+    history = ""
+    for msg in messages[-4:-1]:
         if msg["role"] in ["user", "assistant"]:
             role = "User" if msg["role"] == "user" else "Assistant"
-            context += f"{role}: {msg['content']}\n"
+            history += f"{role}: {msg['content']}\n"
             
+    latest_msg = messages[-1]["content"]
+    
     system_prompt = (
-        "You are an autonomous routing agent. Your ONLY job is to determine if the User's latest request requires a web search to answer accurately (e.g. for recent events, facts, sports, news, real-time data). "
-        "If it DOES require a search, you must output ONLY the exact search query, nothing else. "
-        "If it DOES NOT require a search, you must output exactly NO_SEARCH."
+        "You are an autonomous routing agent. Your ONLY job is to determine if the User's LATEST message requires a web search to answer accurately (e.g., for current events, news, sports, or real-time facts). "
+        "Use the Conversation History ONLY to understand context if the Latest Message is ambiguous (like 'who won it?'). "
+        "If the Latest Message is a simple greeting (like 'hi', 'hello'), conversational, or does NOT need a search, you MUST output exactly NO_SEARCH. "
+        "If it DOES require a search, output ONLY the search query."
     )
+    
+    prompt_content = f"Conversation History:\n{history}\n\nLatest Message: {latest_msg}\n\nOutput ONLY NO_SEARCH or the search query:"
     
     try:
         response = ollama.chat(model=model_name, messages=[
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Conversation context:\n{context}\nWhat is your output?"}
+            {"role": "user", "content": prompt_content}
         ])
         reply = response["message"]["content"].strip()
         
