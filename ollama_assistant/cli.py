@@ -488,13 +488,18 @@ def handle_turn(user_input: str, messages: list, model_name: str, config: dict, 
                 sys.stdout.flush()
             sys.stdout.write("\n")
         else:
-            with Live(console=console, refresh_per_second=15) as live:
-                loading_panel = Panel(Text("Thinking...", style="blink yellow"), title=f"[bold magenta]🤖 Assistant[/bold magenta] [dim]({timestamp})[/dim]", title_align="left", border_style="magenta")
-                live.update(loading_panel)
-                try:
+            try:
+                # Wait for first chunk with status spinner
+                with console.status("[blink yellow]Thinking...[/blink yellow]", spinner="dots"):
+                    response_iterator = iter(response_stream)
+                    first_chunk = next(response_iterator)
+                
+                with Live(console=console, refresh_per_second=15) as live:
                     speeds = []
                     spark_chars = " ▂▃▄▅▆▇█"
-                    for chunk in response_stream:
+                    
+                    def process_chunk(chunk):
+                        nonlocal full_response, tokens
                         content = chunk["message"]["content"]
                         full_response += content
                         tokens += 1
@@ -510,12 +515,26 @@ def handle_turn(user_input: str, messages: list, model_name: str, config: dict, 
                         display_md = Markdown(full_response + "█", code_theme=config.get("code_theme", "monokai"))
                         panel = Panel(display_md, title=f"[bold magenta]🤖 Assistant[/bold magenta] [dim]({timestamp})[/dim] | [yellow]⚡ {speed:.1f} t/s {sparkline}[/yellow]", title_align="left", border_style="magenta")
                         live.update(panel)
-                except KeyboardInterrupt:
-                    full_response += "\n\n*[dim]Generation interrupted by user...[/dim]*"
-
-                final_md = Markdown(full_response, code_theme=config.get("code_theme", "monokai"))
-                final_panel = Panel(final_md, title=f"[bold magenta]🤖 Assistant[/bold magenta] [dim]({timestamp})[/dim] | [yellow]⚡ {(tokens/(time.time()-start_time)):.1f} t/s[/yellow]", title_align="left", border_style="magenta")
-                live.update(final_panel)
+                    
+                    # Process first chunk
+                    process_chunk(first_chunk)
+                    
+                    # Process remaining chunks
+                    for chunk in response_iterator:
+                        process_chunk(chunk)
+                        
+                    # Final update
+                    final_md = Markdown(full_response, code_theme=config.get("code_theme", "monokai"))
+                    final_speed = (tokens/(time.time()-start_time)) if (time.time()-start_time) > 0 else 0
+                    final_panel = Panel(final_md, title=f"[bold magenta]🤖 Assistant[/bold magenta] [dim]({timestamp})[/dim] | [yellow]⚡ {final_speed:.1f} t/s[/yellow]", title_align="left", border_style="magenta")
+                    live.update(final_panel)
+            except StopIteration:
+                pass
+            except KeyboardInterrupt:
+                full_response += "\n\n*[dim]Generation interrupted by user...[/dim]*"
+                if not state.raw_mode:
+                    final_md = Markdown(full_response, code_theme=config.get("code_theme", "monokai"))
+                    console.print(Panel(final_md, title=f"[bold magenta]🤖 Assistant[/bold magenta] [dim]({timestamp})[/dim]", title_align="left", border_style="magenta"))
 
         messages.append({"role": "assistant", "content": full_response})
         save_message("assistant", full_response, state.current_session)
