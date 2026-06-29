@@ -499,18 +499,17 @@ def check_and_get_search_query(messages: list, model_name: str) -> str:
     latest_msg = messages[-1]["content"]
     
     system_prompt = (
-        "You are an autonomous routing agent. Your ONLY job is to determine if the User's LATEST message requires a web search to answer accurately (e.g., for current events, news, sports, or real-time facts). "
-        "Use the Conversation History ONLY to understand context if the Latest Message is ambiguous (like 'who won it?'). "
-        "If the Latest Message is a simple greeting (like 'hi', 'hello'), conversational, or does NOT need a search, you MUST output exactly NO_SEARCH. "
-        "If it DOES require a search, output ONLY the search query.\n\n"
+        "You are an eager, highly intelligent autonomous research agent. Your job is to identify ANY gaps in your knowledge before answering the User's latest message.\n"
+        "You must first THINK step-by-step about what information is required to provide a perfect, factually accurate, up-to-date answer.\n"
+        "If you need ANY external facts, news, context, or if the question involves recent events, you must output a search query in the format: SEARCH_QUERY: <your query>\n"
+        "If you are 100% certain you already know the answer (e.g. for coding tasks, general knowledge, or simple greetings), output exactly: NO_SEARCH\n\n"
         "EXAMPLES:\n"
-        "Latest Message: hi\nOutput: NO_SEARCH\n\n"
-        "Latest Message: who won the IPL 2026\nOutput: IPL 2026 winner\n\n"
-        "Latest Message: write a python script for a snake game\nOutput: NO_SEARCH\n\n"
-        "Latest Message: what is the weather in Tokyo today\nOutput: Tokyo weather today"
+        "User: who won the IPL 2026\nThought: 2026 is a specific year and I need real-time data to know the winner. I must search for this.\nSEARCH_QUERY: IPL 2026 winner\n\n"
+        "User: write a python script for a snake game\nThought: This is a standard coding task. I already know how to write Python. I don't need a web search.\nNO_SEARCH\n\n"
+        "User: what is the weather in Tokyo today\nThought: The weather changes daily. I cannot know today's weather without real-time data.\nSEARCH_QUERY: Tokyo weather today"
     )
     
-    prompt_content = f"Conversation History:\n{history}\n\nLatest Message: {latest_msg}\n\nOutput ONLY NO_SEARCH or the search query:"
+    prompt_content = f"Conversation History:\n{history}\n\nLatest Message: {latest_msg}\n\nThink step-by-step, then output SEARCH_QUERY: <query> or NO_SEARCH."
     
     try:
         response = ollama.chat(model=model_name, messages=[
@@ -519,20 +518,16 @@ def check_and_get_search_query(messages: list, model_name: str) -> str:
         ])
         reply = response["message"]["content"].strip()
         
-        reply_upper = reply.upper()
-        if "NO_SEARCH" in reply_upper or "NO SEARCH" in reply_upper:
+        # Extract the search query if present
+        if "SEARCH_QUERY:" in reply:
+            query = reply.split("SEARCH_QUERY:")[1].strip()
+            query = query.split("\n")[0].strip('"\'')
+            if len(query) > 2 and len(query) < 100:
+                return query
+                
+        if "NO_SEARCH" in reply.upper():
             return None
             
-        reply = reply.strip('"\'')
-        
-        # Remove common chatty prefixes
-        if ":" in reply and len(reply.split(":")[0]) < 20:
-            reply = reply.split(":", 1)[1].strip()
-            
-        if len(reply) > 80 or len(reply) < 2:
-            return None
-            
-        return reply.strip('"\'')
     except Exception:
         pass
     return None
