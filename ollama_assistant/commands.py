@@ -562,11 +562,22 @@ def handle_slash_command(command: str, args: str, model_name: str, messages: lis
 
                 if lang == "python":
                     result = subprocess.run(["python3", "-c", code], capture_output=True, text=True)
+                    out = result.stdout + result.stderr
                 else:
-                    result = subprocess.run(["bash", "-c", code], capture_output=True, text=True)
+                    code_with_pwd = code + "\necho '---PWD_MARKER---'\npwd"
+                    result = subprocess.run(["bash", "-c", code_with_pwd], capture_output=True, text=True)
+                    raw_out = result.stdout + result.stderr
+                    out = raw_out
+                    
+                    if "---PWD_MARKER---" in raw_out:
+                        parts = raw_out.split("---PWD_MARKER---")
+                        out = parts[0].strip()
+                        new_dir = parts[1].strip()
+                        import os
+                        if new_dir and os.path.exists(new_dir):
+                            os.chdir(new_dir)
 
-                out = result.stdout + result.stderr
-                if not out:
+                if not out.strip():
                     out = "<Command executed silently with no output>"
 
                 console.print(

@@ -231,7 +231,7 @@ def main():
     messages = load_history(state.current_session)
     
     if not system_prompt:
-        system_prompt = "You are a highly advanced AI assistant. Your goal is to provide comprehensive, accurate, and highly intelligent answers to every request. Always try your absolute best to answer the user's prompt by synthesizing all available information and your vast knowledge base."
+        system_prompt = "You are a highly advanced AI assistant deeply integrated into the user's terminal. You have the ability to run code. If the user asks you to perform a system action (like navigating folders, reading files, running commands, etc.), you MUST output the required terminal commands in a ```bash block. Do not just give instructions; provide the code block so it can be executed."
 
     if system_prompt and (not messages or messages[0].get("role") != "system"):
         messages.insert(0, {"role": "system", "content": system_prompt})
@@ -500,13 +500,15 @@ def check_and_get_search_query(messages: list, model_name: str) -> str:
     
     system_prompt = (
         "You are an eager, highly intelligent autonomous research agent. Your job is to identify ANY gaps in your knowledge before answering the User's latest message.\n"
-        "You must first THINK step-by-step about what information is required to provide a perfect, factually accurate, up-to-date answer.\n"
-        "If you need ANY external facts, news, context, or if the question involves recent events, you must output a search query in the format: SEARCH_QUERY: <your query>\n"
-        "If you are 100% certain you already know the answer (e.g. for coding tasks, general knowledge, or simple greetings), output exactly: NO_SEARCH\n\n"
+        "You must first THINK step-by-step about what information or action is required to provide a perfect answer.\n"
+        "1. WEB SEARCH: If you need to search the INTERNET for public facts, news, or general world knowledge, output: SEARCH_QUERY: <your query>. Do NOT use this to search for bash commands or code syntax—you already know how to code.\n"
+        "2. LOCAL EXECUTION: If the request requires modifying the user's computer, navigating directories, running commands, OR inspecting local data (like counting local files, finding local folders, checking system resources), you MUST route this to the local execution agent by outputting exactly: RUN_AGENT: <the task description>. ALWAYS output this if the user asks for a local action, REGARDLESS of the conversation history.\n"
+        "3. NO ACTION: If you are 100% certain you already know the answer (e.g. coding tasks, greetings) and NO local execution or web search is needed, output exactly: NO_SEARCH\n\n"
         "EXAMPLES:\n"
-        "User: who won the IPL 2026\nThought: 2026 is a specific year and I need real-time data to know the winner. I must search for this.\nSEARCH_QUERY: IPL 2026 winner\n\n"
-        "User: write a python script for a snake game\nThought: This is a standard coding task. I already know how to write Python. I don't need a web search.\nNO_SEARCH\n\n"
-        "User: what is the weather in Tokyo today\nThought: The weather changes daily. I cannot know today's weather without real-time data.\nSEARCH_QUERY: Tokyo weather today"
+        "User: who won the IPL 2026\nThought: This requires public internet facts. I must search the web.\nSEARCH_QUERY: IPL 2026 winner\n\n"
+        "User: go to my downloads folder and count the files\nThought: This requires inspecting the user's local file system. I should route it to the execution agent.\nRUN_AGENT: go to downloads folder and count files\n\n"
+        "User: write a python script for a snake game\nThought: This is a standard coding task. I already know how to write Python. I don't need a web search or local execution.\nNO_SEARCH\n\n"
+        "User: what is the weather in Tokyo today\nThought: This requires real-time public internet data.\nSEARCH_QUERY: Tokyo weather today"
     )
     
     prompt_content = f"Conversation History:\n{history}\n\nLatest Message: {latest_msg}\n\nThink step-by-step, then output SEARCH_QUERY: <query> or NO_SEARCH."
@@ -523,7 +525,13 @@ def check_and_get_search_query(messages: list, model_name: str) -> str:
             query = reply.split("SEARCH_QUERY:")[1].strip()
             query = query.split("\n")[0].strip('"\'')
             if len(query) > 2 and len(query) < 100:
-                return query
+                return f"SEARCH_QUERY: {query}"
+                
+        if "RUN_AGENT:" in reply:
+            task = reply.split("RUN_AGENT:")[1].strip()
+            task = task.split("\n")[0].strip('"\'')
+            if len(task) > 2:
+                return f"RUN_AGENT: {task}"
                 
         if "NO_SEARCH" in reply.upper():
             return None
@@ -534,6 +542,7 @@ def check_and_get_search_query(messages: list, model_name: str) -> str:
 
 
 def handle_turn(user_input: str, messages: list, model_name: str, config: dict, display_input: str = None):
+    from .commands import handle_slash_command
     messages.append({"role": "user", "content": user_input})
     save_message("user", user_input, state.current_session)
 
@@ -548,11 +557,18 @@ def handle_turn(user_input: str, messages: list, model_name: str, config: dict, 
                 search_query = check_and_get_search_query(messages, model_name)
             
             if search_query:
-                with console.status(f"[bold yellow]🔍 Searching web for '{search_query}'...[/bold yellow]", spinner="dots"):
-                    search_results = search_web(search_query)
-                    sys_msg = f"Web search results for '{search_query}':\n\n{search_results}\n\nUse this information to answer the user's prompt accurately."
-                    messages.append({"role": "system", "content": sys_msg})
-                    save_message("system", sys_msg, state.current_session)
+                if search_query.startswith("RUN_AGENT:"):
+                    task = search_query.replace("RUN_AGENT:", "").strip()
+                    messages.pop() # Remove the user message as /agent doesn't need it in history directly
+                    handle_slash_command("/agent", task, model_name, messages, config, handle_turn)
+                    return
+                elif search_query.startswith("SEARCH_QUERY:"):
+                    query = search_query.replace("SEARCH_QUERY:", "").strip()
+                    with console.status(f"[bold yellow]🔍 Searching web for '{query}'...[/bold yellow]", spinner="dots"):
+                        search_results = search_web(query)
+                        sys_msg = f"Web search results for '{query}':\n\n{search_results}\n\nUse this information to answer the user's prompt accurately."
+                        messages.append({"role": "system", "content": sys_msg})
+                        save_message("system", sys_msg, state.current_session)
 
         response_stream = ollama.chat(model=model_name, messages=messages, stream=True)
         full_response = ""
@@ -618,6 +634,13 @@ def handle_turn(user_input: str, messages: list, model_name: str, config: dict, 
         save_message("assistant", full_response, state.current_session)
         state.last_assistant_response = full_response
         
+        blocks = re.findall(r"```(bash|sh|python)\n(.*?)```", full_response, re.DOTALL)
+        if blocks and not state.raw_mode:
+            lang, code = blocks[-1]
+            if Confirm.ask(f"\n[bold cyan]🚀 Would you like to execute this {lang} code?[/bold cyan]", default=True):
+                handle_slash_command("/run", "", model_name, messages, config, handle_turn)
+        
+
         if state.voice_enabled:
             try:
                 import pyttsx3
