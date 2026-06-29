@@ -511,7 +511,8 @@ def handle_turn(user_input: str, messages: list, model_name: str, config: dict, 
         else:
             try:
                 response_iterator = iter(response_stream)
-                first_chunk = next(response_iterator)
+                with console.status("", spinner="dots"):
+                    first_chunk = next(response_iterator)
                 
                 with Live(console=console, refresh_per_second=15) as live:
                     speeds = []
