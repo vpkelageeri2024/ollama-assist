@@ -488,6 +488,8 @@ def handle_turn(user_input: str, messages: list, model_name: str, config: dict, 
             sys.stdout.write("\n")
         else:
             with Live(console=console, refresh_per_second=15) as live:
+                loading_panel = Panel(Text("Thinking...", style="blink yellow"), title=f"[bold magenta]🤖 Assistant[/bold magenta] [dim]({timestamp})[/dim]", title_align="left", border_style="magenta")
+                live.update(loading_panel)
                 for chunk in response_stream:
                     content = chunk["message"]["content"]
                     full_response += content

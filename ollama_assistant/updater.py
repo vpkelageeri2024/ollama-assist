@@ -18,7 +18,8 @@ def check_for_updates():
         local_hash = local_hash_cmd.stdout.strip()
 
         # Get remote commit hash
-        response = requests.get(REPO_API_URL, timeout=3)
+        with console.status("[bold cyan]🔄 Checking for updates...[/bold cyan]", spinner="dots"):
+            response = requests.get(REPO_API_URL, timeout=3)
         if response.status_code == 200:
             remote_hash = response.json().get("sha")
             
@@ -31,8 +32,8 @@ def check_for_updates():
                         console.print(f"[red]Failed to pull updates: {pull_result.stderr}[/red]")
                         return
                         
-                    console.print("[cyan]Installing dependencies...[/cyan]")
-                    pip_result = subprocess.run(["pip", "install", "--user", "-e", ".", "--break-system-packages"], capture_output=True, text=True)
+                    with console.status("[cyan]Installing dependencies...[/cyan]", spinner="bouncingBar"):
+                        pip_result = subprocess.run(["pip", "install", "--user", "-e", ".", "--break-system-packages"], capture_output=True, text=True)
                     
                     console.print("[bold green]✅ Update successful! Please restart the application to apply changes.[/bold green]")
                     import sys
