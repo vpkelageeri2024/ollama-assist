@@ -1,0 +1,60 @@
+name: Build Debian Package
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch: # Allows manual trigger from the GitHub UI
+
+jobs:
+  build-deb:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install pyinstaller
+          pip install -e .
+
+      - name: Build Standalone Binary with PyInstaller
+        run: |
+          pyinstaller --onefile --name ollama-assist ollama_assistant/cli.py
+
+      - name: Create Debian Package Structure
+        run: |
+          mkdir -p package/usr/bin
+          mkdir -p package/DEBIAN
+          
+          # Copy binary
+          cp dist/ollama-assist package/usr/bin/
+          chmod +x package/usr/bin/ollama-assist
+          
+          # Create Debian control file dynamically
+          cat <<EOF > package/DEBIAN/control
+          Package: ollama-assist
+          Version: 1.0.${{ github.run_number }}
+          Section: utils
+          Priority: optional
+          Architecture: amd64
+          Maintainer: You <you@example.com>
+          Description: Ollama Assistant CLI
+           An elite terminal experience powered by local LLMs.
+          EOF
+
+      - name: Build .deb Package
+        run: |
+          dpkg-deb --build package ollama-assist_amd64.deb
+
+      - name: Upload Debian Package Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ollama-assist-deb
+          path: ollama-assist_amd64.deb

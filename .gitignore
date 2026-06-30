@@ -31,3 +31,11 @@ venv.bak/
 .vscode/
 .idea/
 *.sqlite3
+
+# Build artifacts
+*.deb
+package/
+dist/
+build/
+*.spec
+venv/
