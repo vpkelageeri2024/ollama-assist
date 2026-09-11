@@ -10,18 +10,19 @@ sudo apt-get install -y live-build curl gnupg
 # 2. Setup Build Environment
 mkdir -p ~/wishos-build
 cd ~/wishos-build
-sudo lb clean
+sudo lb clean || true
+rm -rf .build config || true
 
 # Configure the OS branding as "Wish OS"
-lb config -d bookworm \
-    --debian-installer live \
+lb config \
+    --mode debian \
+    --system live \
+    --distribution bookworm \
     --archive-areas "main contrib non-free non-free-firmware" \
     --iso-volume "Wish OS" \
-    --iso-application "Wish OS Hybrid" \
-    --hostname "wishos" \
-    --bootappend-live "boot=live components username=wish user-fullname=Wish_OS locales=en_US.UTF-8"
+    --bootappend-live "boot=live components hostname=wishos username=wish user-fullname=Wish_OS locales=en_US.UTF-8"
 
-# 3. Add Core Desktop Packages (GNOME Wayland is required for Waydroid)
+# 3. Add Core Desktop Packages
 mkdir -p config/package-lists
 cat << 'LIST' > config/package-lists/wishos.list.chroot
 task-gnome-desktop
@@ -33,7 +34,7 @@ ca-certificates
 lxc
 LIST
 
-# 4. Create the Hook to install Waydroid (Android) and Terminal Wish (AI)
+# 4. Create the Hook to install Waydroid and AI
 mkdir -p config/hooks/normal
 cat << 'HOOK' > config/hooks/normal/01-setup-hybrid.hook.chroot
 #!/bin/sh
