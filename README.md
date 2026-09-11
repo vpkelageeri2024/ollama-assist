@@ -1,88 +1,61 @@
-# Ollama Assistant CLI
+# 🧞 Terminal Wish
 
-An advanced, agentic Command Line Interface for interacting with local [Ollama](https://ollama.com/) models. This tool gives your local LLMs a premium terminal experience with features like real-time markdown rendering, persistent chat history, web search, and file context attachments.
+A beautiful, fully-autonomous AI assistant that lives directly in your terminal. Powered by Ollama, it can browse the web, surgically edit files, execute terminal commands with safety guardrails, see images, and remember facts about you!
 
-## Features
+## ✨ Features
+- **Autonomy:** It doesn't just chat; it uses tools to run commands, read files, and write code.
+- **Safety Guardrails:** Safe commands (like `ls` or `pwd`) run instantly. Dangerous commands pause and wait for your `(y/n)` approval.
+- **Long-Term Memory:** Uses a local SQLite database to remember facts across sessions (e.g., "Remember my favorite language is Python").
+- **Web Browsing:** Can search the internet for real-time information.
+- **Vision:** Pass it a screenshot, and it will look at it and describe it.
+- **Surgical Code Editing:** Can edit precise line numbers in large files without rewriting the whole document.
 
-- **Rich Markdown Rendering**: Responses are streamed and formatted in real-time with syntax highlighting for code blocks and bold/italic text styles.
-- **Unlimited Web Search**: Integrated DuckDuckGo search. You can ask the assistant to search the web and summarize the results for you.
-- **Persistent Chat History**: Conversations are automatically saved to a local SQLite database (`~/.config/ollama-assist/history.db`), so you never lose context between sessions.
-- **Multi-line Input**: Easily paste blocks of code or write long prompts. 
-- **File Context**: Attach a file directly via a command-line flag to have the model read its contents before starting the chat.
-- **Slash Commands**: Powerful commands you can type mid-conversation to clear history, switch models, or export the chat.
-- **System Personas**: Define a system prompt to change the behavior of the assistant.
+---
 
-## Installation
+## 🛠️ Prerequisites
 
-Ensure you have Python 3 installed. You can install the tool directly from source:
+Before you can use Terminal Wish, you need to have two things installed on your computer:
+
+1. **Node.js** (v20 or higher)
+   - Download from [nodejs.org](https://nodejs.org/) or install via your package manager.
+2. **Ollama** (Local AI runtime)
+   - Download from [ollama.com](https://ollama.com/) or install via terminal:
+     `curl -fsSL https://ollama.com/install.sh | sh`
+
+---
+
+## 🚀 Installation
+
+### 1. Download the AI Models
+Terminal Wish uses small, hyper-fast local models. Run these commands in your terminal to download them:
 
 ```bash
-# Clone or navigate to the project directory
-cd ollama-assistant
+# The main assistant model (very fast, requires ~1GB RAM)
+ollama run qwen3:0.6b
 
-# Install the package globally (for the current user)
-pip install --user -e . --break-system-packages
+# (Optional) The vision model to look at images (requires ~4GB RAM)
+ollama run llava
 ```
-*(Note: Remove `--break-system-packages` if you are installing within a virtual environment).*
+*(You can hit `Ctrl+C` to exit the Ollama chat once they finish downloading).*
 
-## Usage
+### 2. Install Terminal Wish
+Install the CLI tool globally using NPM:
 
-Once installed, you can start the assistant from anywhere using the `ollama-assist` command.
-
-### Basic Start
-Starts the assistant using the default model (`llama3`).
 ```bash
-ollama-assist
+npm install -g terminal-wish
 ```
 
-### Passing an Initial Prompt
+---
+
+## 🎮 Usage
+
+Simply open your terminal and type:
 ```bash
-ollama-assist "Explain the theory of relativity in simple terms"
+terminal-wish
 ```
 
-### Specifying a Model
-Use the `-m` flag to change the model (make sure you have pulled it via `ollama pull <model>` first!).
-```bash
-ollama-assist -m phi3
-```
-
-### Attaching File Context
-Use the `-f` flag to pass a file to the assistant.
-```bash
-ollama-assist -f my_script.py "Can you find the bug in this code?"
-```
-
-### Setting a System Prompt
-Use the `-s` flag to give the assistant a persona or strict rules.
-```bash
-ollama-assist -s "You are a grumpy pirate. Answer everything in pirate slang."
-```
-
-## Interactive Features
-
-### Multi-line Input
-To write multiple lines (e.g., when pasting code):
-- Press `Alt + Enter` (or `Escape` followed by `Enter`, depending on your terminal configuration) to insert a new line.
-- Press standard `Enter` to submit your prompt.
-
-### Slash Commands
-Type these commands at the `You:` prompt:
-
-- `/search <query>`: Searches the web for your query, injects the results into the context, and asks the model to answer based on the live results. 
-  *(Example: `/search latest news about Python 3.13`)*
-- `/clear`: Wipes the persistent chat history and starts a fresh conversation.
-- `/model <model_name>`: Switches the active Ollama model mid-conversation. 
-  *(Example: `/model mistral`)*
-- `/save <filename.md>`: Exports your entire current conversation to a Markdown file. 
-  *(Example: `/save conversation.md`)*
-
-## Configuration
-
-On the first run, a configuration file is generated at:
-`~/.config/ollama-assist/config.yaml`
-
-You can edit this file to change default behaviors:
-```yaml
-default_model: llama3
-theme: ansicyan
-```
+### Try these prompts:
+- *"What is the weather in Tokyo right now?"* (Tests Web Browsing)
+- *"Remember that my name is Vishal."* (Tests Memory)
+- *"Create a python script that prints hello world."* (Tests File Creation)
+- *"What is going on in this image: ~/Downloads/screenshot.png"* (Tests Vision)
