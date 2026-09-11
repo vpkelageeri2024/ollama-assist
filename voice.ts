@@ -1,0 +1,33 @@
+import { pipeline } from '@xenova/transformers';
+import { spawn, exec } from 'child_process';
+
+let transcriber: any = null;
+
+export async function initVoice() {
+    if (!transcriber) {
+        transcriber = await pipeline('automatic-speech-recognition', 'Xenova/whisper-tiny.en');
+    }
+}
+
+export function recordAudio(filePath: string, durationMs: number = 5000): Promise<void> {
+    return new Promise((resolve) => {
+        // use rec (sox) to record 16kHz mono audio
+        const rec = spawn('rec', ['-q', '-c', '1', '-r', '16000', filePath]);
+        setTimeout(() => {
+            rec.kill();
+            resolve();
+        }, durationMs);
+    });
+}
+
+export async function transcribeAudio(filePath: string) {
+    if (!transcriber) await initVoice();
+    const result = await transcriber(filePath);
+    return result.text;
+}
+
+export function speakText(text: string) {
+    // Strip quotes and special chars that might break espeak
+    const cleanText = text.replace(/["'$`\\]/g, ' ').substring(0, 500); 
+    exec(`espeak -s 150 "${cleanText}"`);
+}

@@ -10,6 +10,10 @@ import os from 'node:os';
 import { execSync } from 'node:child_process';
 import * as cheerio from 'cheerio';
 import sqlite3 from 'sqlite3';
+import { browser_goto, browser_click, browser_type, browser_read } from './browser.js';
+import { initVoice, recordAudio, transcribeAudio, speakText } from './voice.js';
+import { schedule_task } from './cron.js';
+import { index_directory, semantic_search } from './vector.js';
 
 const ollama = new Ollama({ host: 'http://127.0.0.1:11434' });
 
@@ -71,6 +75,80 @@ RULES:
 - ALWAYS use search_web if the user asks for real-time information, weather, news, or current events. Never say you don't have access to this information.`;
 
 const tools = [
+    {
+        type: 'function',
+        function: {
+            name: 'index_directory',
+            description: 'Read and mathematically index a directory for AI Semantic Search.',
+            parameters: {
+                type: 'object',
+                properties: { dirPath: { type: 'string' } },
+                required: ['dirPath']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'semantic_search',
+            description: 'Mathematically search the indexed codebase for a specific concept or code snippet.',
+            parameters: {
+                type: 'object',
+                properties: { query: { type: 'string' } },
+                required: ['query']
+            }
+        }
+    },
+
+    {
+        type: 'function',
+        function: {
+            name: 'schedule_task',
+            description: 'Schedule a background autonomous task using a cron expression.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    cron_expression: { type: 'string', description: 'Standard cron expression e.g. * * * * *' },
+                    prompt: { type: 'string', description: 'The prompt to run autonomously' }
+                },
+                required: ['cron_expression', 'prompt']
+            }
+        }
+    },
+
+    {
+        type: 'function',
+        function: {
+            name: 'browser_goto',
+            description: 'Navigate the headless browser to a specific URL.',
+            parameters: { type: 'object', properties: { url: { type: 'string' } }, required: ['url'] }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'browser_click',
+            description: 'Click a CSS selector in the browser.',
+            parameters: { type: 'object', properties: { selector: { type: 'string' } }, required: ['selector'] }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'browser_type',
+            description: 'Type text into a CSS selector in the browser.',
+            parameters: { type: 'object', properties: { selector: { type: 'string' }, text: { type: 'string' } }, required: ['selector', 'text'] }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'browser_read',
+            description: 'Extract all visible text from the current browser page.',
+            parameters: { type: 'object', properties: {} }
+        }
+    },
+
     {
         type: 'function',
         function: {
@@ -229,7 +307,24 @@ async function executeTool(name: string, args: any): Promise<string> {
             return `Replaced lines ${args.startLine}-${args.endLine} in ${args.filepath}`;
 } else if (name === 'read_file') {
             return fs.readFileSync(args.filepath, 'utf-8');
-        } else if (name === 'search_web') {
+        
+        
+        
+        } else if (name === 'index_directory') {
+            return await index_directory(args.dirPath);
+        } else if (name === 'semantic_search') {
+            return await semantic_search(args.query);
+} else if (name === 'schedule_task') {
+            return schedule_task(args.cron_expression, args.prompt);
+} else if (name === 'browser_goto') {
+            return await browser_goto(args.url);
+        } else if (name === 'browser_click') {
+            return await browser_click(args.selector);
+        } else if (name === 'browser_type') {
+            return await browser_type(args.selector, args.text);
+        } else if (name === 'browser_read') {
+            return await browser_read();
+} else if (name === 'search_web') {
             const response = await fetch("https://lite.duckduckgo.com/lite/", {
                 method: "POST",
                 headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -329,10 +424,26 @@ const App = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [statusText, setStatusText] = useState('');
     const [phase, setPhase] = useState('thinking');
+    const [isRecording, setIsRecording] = useState(false);
     const [pendingAction, setPendingAction] = useState<{toolName: string, args: any, resolve: (approved: boolean) => void} | null>(null);
 
     
     useInput((input, key) => {
+        
+        if (input.toLowerCase() === 'v' && !pendingAction && !isLoading && !isRecording) {
+            (async () => {
+                setIsRecording(true);
+                const tmpPath = path.join(os.tmpdir(), 'wish_voice.wav');
+                await recordAudio(tmpPath, 5000);
+                setStatusText('Transcribing voice...');
+                setPhase('processing');
+                setIsRecording(false);
+                const transcript = await transcribeAudio(tmpPath);
+                handleSubmit(transcript);
+            })();
+            return;
+        }
+        
         if (pendingAction) {
             if (input.toLowerCase() === 'y') {
                 pendingAction.resolve(true);
@@ -457,6 +568,7 @@ const App = () => {
             }
 
             setMessages(prev => [...prev, response.message]);
+            if (response.message.content) { speakText(response.message.content); }
 
         } catch (e: any) {
             setMessages(prev => [...prev, { role: 'system', content: `Error: ${e.message}` }]);
@@ -514,7 +626,12 @@ const App = () => {
                 })}
             </Box>
 
-            {pendingAction ? (
+            {isRecording ? (
+                <Box borderStyle="round" borderColor="red" paddingX={1} marginTop={1}>
+                    <Spinner color="red" />
+                    <Text color="red" bold> 🎙️ Recording... Speak now! (5s)</Text>
+                </Box>
+            ) : pendingAction ? (
                 <Box borderStyle="round" borderColor="red" paddingX={1} marginTop={1}>
                     <Text color="red" bold>⚠️ Allow {pendingAction.toolName} to run? (y/n) </Text>
                 </Box>
