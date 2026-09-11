@@ -1,0 +1,46 @@
+{
+  "name": "terminal-wish",
+  "version": "1.0.0",
+  "description": "A beautiful terminal AI assistant powered by Ollama",
+  "main": "index.js",
+  "bin": {
+    "terminal-wish": "./index.js"
+  },
+  "files": [
+    "index.js"
+  ],
+  "scripts": {
+    "build": "tsc && sed -i '1i#!/usr/bin/env node' index.js && chmod +x index.js"
+  },
+  "keywords": [
+    "ai",
+    "terminal",
+    "agent",
+    "ollama",
+    "qwen",
+    "cli"
+  ],
+  "author": "vishal",
+  "license": "MIT",
+  "dependencies": {
+    "cheerio": "^1.2.0",
+    "duck-duck-scrape": "^2.2.7",
+    "googlethis": "^1.8.0",
+    "ink": "^7.1.1",
+    "ink-big-text": "^2.0.0",
+    "ink-gradient": "^4.0.1",
+    "ink-text-input": "^6.0.0",
+    "ollama": "^0.6.3",
+    "react": "^19.2.8",
+    "sqlite3": "^6.0.1"
+  },
+  "devDependencies": {
+    "@types/ink-big-text": "^1.2.4",
+    "@types/ink-gradient": "^2.0.4",
+    "@types/node": "^26.4.1",
+    "@types/react": "^19.2.18",
+    "ts-node": "^10.9.2",
+    "typescript": "^7.0.2"
+  },
+  "type": "module"
+}
