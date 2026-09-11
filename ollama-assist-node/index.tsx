@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { render, Box, Text } from 'ink';
+import { render, Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import Gradient from 'ink-gradient';
 import BigText from 'ink-big-text';
@@ -9,6 +9,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { execSync } from 'node:child_process';
 import * as cheerio from 'cheerio';
+import sqlite3 from 'sqlite3';
 
 const ollama = new Ollama({ host: 'http://127.0.0.1:11434' });
 
@@ -33,6 +34,22 @@ function discoverHomeFolders(): string[] {
 }
 const folderList = discoverHomeFolders().map(f => `  - ${f} -> ${path.join(HOME_DIR, f)}`).join('\n');
 
+
+const DB_PATH = path.join(HOME_DIR, '.terminal-wish-memory.db');
+const db = new sqlite3.Database(DB_PATH);
+db.serialize(() => {
+    db.run("CREATE TABLE IF NOT EXISTS memory (key TEXT PRIMARY KEY, value TEXT)");
+});
+
+function getMemory(): Promise<string> {
+    return new Promise((resolve) => {
+        db.all("SELECT key, value FROM memory", (err, rows: any[]) => {
+            if (err || !rows || rows.length === 0) resolve("No memories saved.");
+            else resolve(rows.map((r: any) => `- ${r.key}: ${r.value}`).join('\n'));
+        });
+    });
+}
+
 const SYSTEM_PROMPT = `You are Terminal Wish, an autonomous terminal AI assistant.
 
 System info:
@@ -48,10 +65,57 @@ RULES:
 - If the user says "documents folder", check the list above for the exact casing and use that absolute path (e.g. ${HOME_DIR}/Documents/file.txt).
 - Use run_command ("ls", "pwd") to explore if you are unsure.
 - Always use absolute paths starting with /
+- MEMORY: You have access to long-term memory. Use remember_fact to save important info (user name, preferences, context) and recall it in future sessions!
+- VISION: If the user provides a path to an image (e.g. .png, .jpg), the image will be sent to you automatically. Look at it carefully!
 - You have tools to search the web (search_web) and read webpages (read_webpage).
 - ALWAYS use search_web if the user asks for real-time information, weather, news, or current events. Never say you don't have access to this information.`;
 
 const tools = [
+    {
+        type: 'function',
+        function: {
+            name: 'remember_fact',
+            description: 'Save a fact about the user or system to long-term memory.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    key: { type: 'string', description: 'Short unique identifier for this fact' },
+                    value: { type: 'string', description: 'The fact to remember' }
+                },
+                required: ['key', 'value']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'delete_fact',
+            description: 'Delete a fact from long-term memory.',
+            parameters: {
+                type: 'object',
+                properties: { key: { type: 'string' } },
+                required: ['key']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'replace_lines',
+            description: 'Replace specific lines in a file. Lines are 1-indexed. Use this for surgical edits.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    filepath: { type: 'string', description: 'Absolute path of the file' },
+                    startLine: { type: 'number', description: 'Starting line number (1-indexed)' },
+                    endLine: { type: 'number', description: 'Ending line number (inclusive)' },
+                    newContent: { type: 'string', description: 'The new content to insert' }
+                },
+                required: ['filepath', 'startLine', 'endLine', 'newContent']
+            }
+        }
+    },
+
     {
         type: 'function',
         function: {
@@ -143,7 +207,27 @@ async function executeTool(name: string, args: any): Promise<string> {
             }
             fs.writeFileSync(args.filepath, args.content);
             return `File created: ${args.filepath}`;
-        } else if (name === 'read_file') {
+        
+        } else if (name === 'remember_fact') {
+            return new Promise((resolve) => {
+                db.run("INSERT OR REPLACE INTO memory (key, value) VALUES (?, ?)", [args.key, args.value], (err) => {
+                    if (err) resolve(`Error saving memory: ${err.message}`);
+                    else resolve(`Saved to memory: ${args.key}`);
+                });
+            });
+        } else if (name === 'delete_fact') {
+            return new Promise((resolve) => {
+                db.run("DELETE FROM memory WHERE key = ?", [args.key], (err) => {
+                    if (err) resolve(`Error deleting memory: ${err.message}`);
+                    else resolve(`Deleted from memory: ${args.key}`);
+                });
+            });
+        } else if (name === 'replace_lines') {
+            const lines = fs.readFileSync(args.filepath, 'utf-8').split('\n');
+            lines.splice(args.startLine - 1, args.endLine - args.startLine + 1, ...args.newContent.split('\n'));
+            fs.writeFileSync(args.filepath, lines.join('\n'));
+            return `Replaced lines ${args.startLine}-${args.endLine} in ${args.filepath}`;
+} else if (name === 'read_file') {
             return fs.readFileSync(args.filepath, 'utf-8');
         } else if (name === 'search_web') {
             const response = await fetch("https://lite.duckduckgo.com/lite/", {
@@ -225,6 +309,7 @@ const StatusBar = ({ statusText, phase }: { statusText: string; phase: string })
         thinking: 'cyan',
         running: 'yellow',
         processing: 'magenta',
+        waiting_approval: 'red',
     };
     const color = phaseColors[phase] || 'yellow';
 
@@ -244,15 +329,52 @@ const App = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [statusText, setStatusText] = useState('');
     const [phase, setPhase] = useState('thinking');
+    const [pendingAction, setPendingAction] = useState<{toolName: string, args: any, resolve: (approved: boolean) => void} | null>(null);
+
+    
+    useInput((input, key) => {
+        if (pendingAction) {
+            if (input.toLowerCase() === 'y') {
+                pendingAction.resolve(true);
+                setPendingAction(null);
+            } else if (input.toLowerCase() === 'n') {
+                pendingAction.resolve(false);
+                setPendingAction(null);
+            }
+        }
+    });
 
     const handleSubmit = async (query: string) => {
         if (!query.trim()) return;
 
+        
+        let activeModel = 'qwen3:0.6b';
+        let images: Uint8Array[] = [];
+        
+        // Vision: detect image paths in query
+        const imageMatches = query.match(/(?:\/|~)[^\s]+?\.(?:png|jpg|jpeg)/gi);
+        if (imageMatches) {
+            for (const p of imageMatches) {
+                const fullPath = p.replace('~', HOME_DIR);
+                if (fs.existsSync(fullPath)) {
+                    images.push(fs.readFileSync(fullPath));
+                }
+            }
+            if (images.length > 0) {
+                activeModel = 'llava'; // Switch to vision model!
+            }
+        }
+
+        // Memory injection
+        const memories = await getMemory();
+        const dynamicSystemPrompt = SYSTEM_PROMPT + "\n\nSAVED MEMORIES:\n" + memories;
+
         let currentMessages: any[] = [
-            { role: 'system', content: SYSTEM_PROMPT },
+            { role: 'system', content: dynamicSystemPrompt },
             ...messages,
-            { role: 'user', content: query }
+            { role: 'user', content: query, images: images.length > 0 ? images : undefined }
         ];
+
         setMessages(prev => [...prev, { role: 'user', content: query }]);
         setInput('');
         setIsLoading(true);
@@ -261,7 +383,7 @@ const App = () => {
 
         try {
             let response = await ollama.chat({
-                model: 'qwen3:0.6b',
+                model: activeModel,
                 messages: currentMessages,
                 stream: false,
                 tools: tools as any
@@ -291,14 +413,43 @@ const App = () => {
                         setStatusText(`${toolName}...`);
                     }
                     
-                    const result = await executeTool(toolName, toolArgs);
+                    
+                    let isSafe = true;
+                    if (toolName === 'run_command') {
+                        const safeCommands = ['ls', 'pwd', 'cat', 'echo', 'which', 'git status', 'whoami'];
+                        const cmd = toolArgs.command.trim();
+                        isSafe = safeCommands.some(safe => cmd.startsWith(safe));
+                    } else if (toolName === 'create_file' || toolName === 'replace_lines') {
+                        isSafe = false;
+                    }
+
+                    let result = '';
+                    if (!isSafe) {
+                        setPhase('waiting_approval');
+                        setStatusText(`Allow ${toolName}? (y/n)`);
+                        
+                        const approved = await new Promise<boolean>((resolve) => {
+                            setPendingAction({ toolName, args: toolArgs, resolve });
+                        });
+                        
+                        if (!approved) {
+                            result = "User denied permission to run this tool.";
+                        } else {
+                            setPhase('running');
+                            result = await executeTool(toolName, toolArgs);
+                        }
+                    } else {
+                        setPhase('running');
+                        result = await executeTool(toolName, toolArgs);
+                    }
+
                     currentMessages.push({ role: 'tool', content: result });
                 }
 
                 setPhase('processing');
                 setStatusText('Analyzing results...');
                 response = await ollama.chat({
-                    model: 'qwen3:0.6b',
+                    model: activeModel,
                     messages: currentMessages,
                     stream: false,
                     tools: tools as any
@@ -363,7 +514,11 @@ const App = () => {
                 })}
             </Box>
 
-            {isLoading ? (
+            {pendingAction ? (
+                <Box borderStyle="round" borderColor="red" paddingX={1} marginTop={1}>
+                    <Text color="red" bold>⚠️ Allow {pendingAction.toolName} to run? (y/n) </Text>
+                </Box>
+            ) : isLoading ? (
                 <StatusBar statusText={statusText} phase={phase} />
             ) : (
                 <Box borderStyle="round" borderColor="green" paddingX={1} marginTop={1}>
